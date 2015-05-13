@@ -1,15 +1,107 @@
-<!DOCTYPE html>
+
+<!doctype html>
 <html>
   <head>
-    <meta charset="utf-8">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
   </head>
   <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
-    <script>
-      // Run queries and display results here
-    </script>
+  <div class="mixpanel-platform-section">
+      <div id="eventSelectDVD" style="float: left;"></div>
+      <div style="clear: left"></div>
+      <div id="eventSelectDIV" style="float: left;"></div>
+      <div id="propSelectDIV" style="float: left;"></div>
+      <div style="clear: both;"></div>
+      <div id="graph"></div>
+  </div>
+  <div id="table"></div>
+  <script>
+      var dvdEventName = $('#eventSelectDVD').MPEventSelect();
+      var divEventName = $('#eventSelectDIV').MPEventSelect();
+      var divProp = $('#propSelectDIV').MPPropertySelect();
+      // Property validation
+      var propCheck = function (){
+        if (divEventName.val() && dvdEventName.val()) {
+          var $divProp = MP.api.topProperties(divEventName.MPEventSelect('value'));
+          var $dvdProp = MP.api.topProperties(dvdEventName.MPEventSelect('value'));
+          divProp.replaceWith('<div id="propSelectDIV" style="float: left;"></div>')
+          divProp = $('#propSelectDIV').MPPropertySelect();
+          $.when($divProp, $dvdProp).done(function(divProps, dvdProps){
+            var props = _.intersection(_.keys(divProps.values()), _.keys(dvdProps.values()))
+            
+            propsList = {items:[]}
+            _.each(props, function(key){
+              propsList.items.push({label: key, value: key})
+            })
+            divProp.MPSelect(propsList)
+            divProp.on('change', runQuery);
+            runQuery()
+          })
+        }
+      };
+
+    // Query logic
+     var runQuery = function(){
+        var divEvent = divEventName.MPEventSelect('value');
+        var dvdEvent  = dvdEventName.MPEventSelect('value');
+
+        // Setting our paramaters to the selected values
+        var divParams = {
+          on: 'properties["' + divProp.val() +'"]',
+          unit: 'day',
+          type: 'unique',
+          from: moment().subtract(30, 'days')
+        };
+
+        var dvdParams = {
+          on: 'properties["' + divProp.val() +'"]',
+          unit: 'day',
+          from: moment().subtract(30, 'days'),
+          to: moment().subtract(1, 'days')
+        };
+
+        // Lets make requests
+        var $div = MP.api.segment(divEvent, divParams);
+        var $dvd = MP.api.segment(dvdEvent, dvdParams);
+        var data = {};
+        // When requests are complete iterate through all keys and their dates
+        $.when($div, $dvd).done(function(div, dvd){
+          _.each(_.keys(div.values()), function(key){
+            data[key] = {};
+            _.each(_.keys(div.values()[key]), function(date){
+                var result = 0;
+                 if (typeof dvd.values()[key] != 'undefined') {
+                   var divisor = dvd.values()[key][date];
+                   var dividend = div.values()[key][date];
+                   result = divisor / dividend;
+                 }
+                 // Validation where the graph broke because it tried to scale infinty
+                 if (result == Infinity|| isNaN(result)){
+                   result = 0;
+                 }
+
+                 // Set the key's date to the result
+                 data[key][date] = result;
+              });
+           });
+
+          // Chart it
+          debugger
+          var chart = $('#graph').MPChart({chartType: 'line'});
+          chart.MPChart('setData', data);
+        })
+      }
+
+     // Responses to UX Changes
+     dvdEventName.on('change', function(r, rEventName) {
+       propCheck()
+     });
+
+     divEventName.on('change', function(d, dEventName){
+       propCheck()
+     });
+
+  </script>
   </body>
 </html>
